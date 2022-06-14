@@ -10,6 +10,8 @@ services:
     networks:
       - data_sharing
   publisher:
+    ports:
+      - "3001:80"
     # Makes the compose- build our Image based on the files in publisher folder
     build:
       context: ./publisher
@@ -17,7 +19,9 @@ services:
     depends_on: 
       - redis
     networks:
-      - data_sharing
+      data_sharing:
+        aliases:
+          - publisher
   publisher2:
     # Makes the compose- build our Image based on the files in publisher folder
     build:
@@ -31,11 +35,24 @@ services:
       build:
         context: ./subscriber
         dockerfile: Dockerfile
+      ports:
+        - "3000:3000"
       depends_on: 
         - redis
         - publisher
       networks:
         - data_sharing
+  subscriber2:
+    build:
+      context: ./subscriber
+      dockerfile: Dockerfile
+    ports:
+      - "3002:3000"
+    depends_on:
+      - redis
+      - publisher
+    networks:
+      - data_sharing
 
 networks:
   data_sharing:

@@ -4,10 +4,55 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
+	"net/http"
 	"time"
 
 	"github.com/go-redis/redis/v8"
+	"github.com/gofiber/fiber/v2"
 )
+
+func unsubscribe(ctx context.Context, client *redis.PubSub) {
+	client.Unsubscribe(ctx, "new_users")
+}
+
+func handleSubscribe(ctx context.Context, c *fiber.Ctx, client *redis.Client) error {
+
+	// call redis if this c.Params("key") exists, if it does return
+
+	// Subscribe to the Topic given
+	topic := subscribe(ctx, client)
+	defer unsubscribe(ctx, topic)
+	// mark account as dirty
+	_, err := http.Get("http://publisher/" + c.Params("key"))
+
+	if err != nil {
+		log.Fatalln(err)
+	}
+	channel := topic.Channel()
+	for msg := range channel {
+		u := &User{}
+		// Unmarshal the data into the user
+		err := u.UnmarshalBinary([]byte(msg.Payload))
+		if err != nil {
+			panic(err)
+		}
+
+		fmt.Println(u)
+		if u.Key == c.Params("key") {
+			c.SendString(u.Username + " is here!")
+			return nil
+		}
+	}
+	return nil
+}
+
+func subscribe(ctx context.Context, client *redis.Client) *redis.PubSub {
+	topic := client.Subscribe(ctx, "new_users")
+	// Get the Channel to use
+	// Itterate any messages sent on the channel
+	return topic
+}
 
 func main() {
 	// Create a new Redis Client
@@ -27,27 +72,25 @@ func main() {
 		}
 	}
 	ctx := context.Background()
-	// Subscribe to the Topic given
-	topic := redisClient.Subscribe(ctx, "new_users")
-	// Get the Channel to use
-	channel := topic.Channel()
-	// Itterate any messages sent on the channel
-	for msg := range channel {
-		u := &User{}
-		// Unmarshal the data into the user
-		err := u.UnmarshalBinary([]byte(msg.Payload))
-		if err != nil {
-			panic(err)
-		}
 
-		fmt.Println(u)
-	}
+	app := fiber.New()
+
+	app.Get("/", func(c *fiber.Ctx) error {
+		return c.SendString("Hello, World!")
+	})
+	app.Get("/user/:key", func(c *fiber.Ctx) error {
+		return handleSubscribe(ctx, c, redisClient)
+	})
+
+	app.Listen(":3000")
+
 }
 
 // User is a struct representing newly registered users
 type User struct {
 	Username string
 	Email    string
+	Key      string
 }
 
 // MarshalBinary encodes the struct into a binary blob

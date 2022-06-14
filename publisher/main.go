@@ -3,16 +3,19 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"math/rand"
 	"time"
 
 	"github.com/go-redis/redis/v8"
+	"github.com/gofiber/fiber/v2"
 )
 
 // User is a struct representing newly registered users
 type User struct {
 	Username string
 	Email    string
+	Key      string
 }
 
 // MarshalBinary encodes the struct into a binary blob
@@ -39,6 +42,7 @@ var SirNames []string = []string{"Ericsson", "Redisson", "Edisson", "Tesla", "Bo
 var EmailProviders []string = []string{"Hotmail.com", "Gmail.com", "Awesomeness.com", "Redis.com"}
 
 func main() {
+	app := fiber.New()
 	// Create a new Redis Client
 	redisClient := redis.NewClient(&redis.Options{
 		Addr:     "redis:6379",  // We connect to host redis, thats what the hostname of the redis service is set to in the docker-compose
@@ -57,6 +61,25 @@ func main() {
 	}
 	// Generate a new background context that  we will use
 	ctx := context.Background()
+	app.Get("/:key", func(c *fiber.Ctx) error {
+
+		c.SendString("Hello, World!")
+		var user *User
+		user = GenerateRandomUser()
+		user.Key = c.Params("key")
+		rand.Seed(time.Now().UnixNano())
+		n := rand.Intn(4)
+		time.Sleep(time.Duration(n) * time.Second)
+		err := redisClient.Publish(ctx, "new_users", user).Err()
+		if err != nil {
+			panic(err)
+		}
+		return nil
+
+	})
+
+	app.Listen(":80")
+
 	// Loop and randomly generate users on a random timer
 	for {
 		// Publish a generated user to the new_users channel
@@ -68,6 +91,7 @@ func main() {
 		rand.Seed(time.Now().UnixNano())
 		n := rand.Intn(4)
 		time.Sleep(time.Duration(n) * time.Second)
+		fmt.Println("sent dummy user")
 	}
 
 }
@@ -86,5 +110,6 @@ func GenerateRandomUser() *User {
 	return &User{
 		Username: Names[nameIndex] + " " + SirNames[sirNameIndex],
 		Email:    Names[nameIndex] + SirNames[sirNameIndex] + "@" + EmailProviders[emailIndex],
+		Key:      "nil",
 	}
 }
